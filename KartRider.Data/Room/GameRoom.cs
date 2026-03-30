@@ -28,6 +28,7 @@ public class GameRoom
     public byte RelayType = 0; //0 - UDP 1 - TCP
     public Dictionary<int, uint> TimeData { get; set; } = new Dictionary<int, uint>();
     public Dictionary<int, int> Ranking { get; set; } = new Dictionary<int, int>();
+    public List<uint> RecentTracks { get; set; } = new List<uint>(); // 最近游玩的赛道列表
 
     // 8个格子（0-7）
     public RoomMember[] _slots = new RoomMember[8];
@@ -297,6 +298,21 @@ public class GameRoom
         return true;
     }
 
+    // 添加赛道到最近游玩列表中
+    public void AddRecentTrack(uint trackId)
+    {
+        RecentTracks.Add(trackId);
+        if (RecentTracks.Count > 15)
+        {
+            RecentTracks.RemoveAt(0);
+        }
+    }
+
+    // 获取最近游玩的赛道列表
+    public List<uint> GetRecentTracks()
+    {
+        return RecentTracks;
+    }
     private bool IsValidSlotId(byte slotId) => slotId >= 0 && slotId < 8;
 }
 

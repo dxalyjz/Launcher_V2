@@ -29,6 +29,42 @@ namespace KartRider
                 return trackId.ToString();
             }
         }
+        private static string ExcludeRecentTracks(Random random, GameRoom room, XElement TrackSet)
+        {
+            string RandomTrackGameTrack = "";
+            // 去除之前玩过的赛道
+            XElement selectedTrack = null;
+            if (room != null)
+            {
+                // 获取房间中最近游玩的赛道列表
+                List<uint> recentTracks = room.GetRecentTracks();
+                Console.WriteLine("recentTracks: {0}", recentTracks.Count);
+                // 如果最近游玩的赛道列表为空，则从所有赛道中随机选择一个赛道
+                if (recentTracks.Count > 0)
+                {
+                    // 从所有赛道中过滤掉最近游玩过的赛道,得到没玩过的赛道
+                    var availableTracks = TrackSet
+                        .Descendants("track")
+                        .Where(t =>
+                            !recentTracks.Contains(
+                                Adler32Helper.GenerateAdler32_UNICODE((string)t.Attribute("id"))
+                            )
+                        )
+                        .ToList();
+                    Console.WriteLine("availableTracks: {0}", availableTracks.Count);
+                    // 从没玩过的赛道中随机选择一个赛道
+                    if (availableTracks.Count > 0)
+                    {
+                        selectedTrack = availableTracks[random.Next(availableTracks.Count)];
+                        Console.WriteLine("selectedTrack: {0}", selectedTrack);
+                        RandomTrackGameTrack = (string)selectedTrack.Attribute("id");
+                        // return Adler32Helper.GenerateAdler32_UNICODE(RandomTrackGameTrack, 0);
+                        return RandomTrackGameTrack;
+                    }
+                }
+            }
+            return null;
+        }
 
         public static uint GetRandomTrack(string Nickname, byte GameType, uint Track)
         {
@@ -143,22 +179,44 @@ namespace KartRider
             else
             {
                 XDocument doc = randomTrack;
+                Random random = new Random();
+                // 读取xml文件
                 var TrackSet = doc.Descendants("RandomTrackSet")
-                    .FirstOrDefault(rts => (string)rts.Attribute("gameType") == RandomTrackGameType && (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack);
+                    .FirstOrDefault(rts =>
+                        (string)rts.Attribute("gameType") == RandomTrackGameType
+                        && (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack
+                    );
+
                 if (TrackSet != null)
                 {
-                    Random random = new Random();
-                    var randomTrack = TrackSet.Descendants("track").ElementAt(random.Next(TrackSet.Descendants("track").Count()));
-                    RandomTrackGameTrack = (string)randomTrack.Attribute("id");
+                    // 获取房间对象
+                    int roomId = RoomManager.TryGetRoomId(Nickname);
+                    GameRoom room = RoomManager.GetRoom(roomId);
+
+                    // 过滤最近玩过的赛道
+                    RandomTrackGameTrack = ExcludeRecentTracks(random, room, TrackSet);
+                    if (RandomTrackGameTrack != null)
+                    {
+                        return Adler32Helper.GenerateAdler32_UNICODE(RandomTrackGameTrack, 0);
+                    }
+
+                    // 过滤赛道失败,从所有赛道中选择
+                    var selectedTrack = TrackSet
+                        .Descendants("track")
+                        .ElementAt(random.Next(TrackSet.Descendants("track").Count()));
+                    RandomTrackGameTrack = (string)selectedTrack.Attribute("id");
                 }
                 else
                 {
                     var TrackList = doc.Descendants("RandomTrackList")
-                        .FirstOrDefault(rts => (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack);
+                        .FirstOrDefault(rts =>
+                            (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack
+                        );
                     if (TrackList != null)
                     {
-                        Random random = new Random();
-                        var randomTrack = TrackList.Descendants("track").ElementAt(random.Next(TrackList.Descendants("track").Count()));
+                        var randomTrack = TrackList
+                            .Descendants("track")
+                            .ElementAt(random.Next(TrackList.Descendants("track").Count()));
                         RandomTrackGameTrack = (string)randomTrack.Attribute("id");
                     }
                 }
