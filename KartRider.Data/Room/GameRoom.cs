@@ -299,7 +299,7 @@ public class GameRoom
     }
 
     // 添加赛道到最近游玩列表中
-    public void AddRecentTrack(uint trackId)
+    public void AddTrackToRecentList(uint trackId)
     {
         RecentTracks.Add(trackId);
         if (RecentTracks.Count > 15)

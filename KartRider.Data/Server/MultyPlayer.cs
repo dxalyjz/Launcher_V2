@@ -741,6 +741,9 @@ public static class MultyPlayer
             }
 
             room.trackTemp = RandomTrack.GetRandomTrack(Parent.Nickname, room.RandomTrackGameType, room.track);
+            
+            // 添加赛道到最近游玩列表
+            room.AddTrackToRecentList(room.trackTemp);
 
             using (OutPacket oPacket = new OutPacket("GrReplyStartPacket"))
             {
