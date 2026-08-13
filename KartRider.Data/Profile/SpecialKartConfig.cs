@@ -284,6 +284,7 @@ public class SpecialKartConfig
             SkillAttackedDesc = "特殊道具车：被指定道具攻击后获得特殊道具",
             SkillAttacked = new Dictionary<ushort, Dictionary<short, SkillMappingConfig>>
             {
+                { 1633, new Dictionary<short, SkillMappingConfig> { {9, new SkillMappingConfig { TargetItemId = 7, Probability = 100 }}, {7, new SkillMappingConfig { TargetItemId = 5, Probability = 100 }} } },
                 { 1622, new Dictionary<short, SkillMappingConfig> { {7, new SkillMappingConfig { TargetItemId = 32, Probability = 60 }} } },
                 { 1613, new Dictionary<short, SkillMappingConfig> { {5, new SkillMappingConfig { TargetItemId = 10, Probability = 100 }} } },
                 { 1610, new Dictionary<short, SkillMappingConfig> { {4, new SkillMappingConfig { TargetItemId = 6, Probability = 100 }} } },
