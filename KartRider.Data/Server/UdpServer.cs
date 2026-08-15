@@ -491,5 +491,24 @@ namespace KartRider
             udpClients.TryRemove(nickname, out _);
             udpLastActivity.TryRemove(nickname, out _);
         }
+
+        // 昵称变更时同步 UDP 客户端映射（改名卡使用后调用）
+        // 防止旧昵称的 UDP 条目残留，导致开局后游戏数据中继到错误目标/查不到玩家
+        public static void OnNicknameChanged(string oldNickname, string newNickname)
+        {
+            if (string.IsNullOrEmpty(oldNickname) || string.IsNullOrEmpty(newNickname))
+                return;
+            if (oldNickname == newNickname)
+                return;
+
+            if (udpClients.TryRemove(oldNickname, out var udpInfo))
+            {
+                udpClients[newNickname] = udpInfo;
+            }
+            if (udpLastActivity.TryRemove(oldNickname, out long lastActivity))
+            {
+                udpLastActivity[newNickname] = lastActivity;
+            }
+        }
     }
 }

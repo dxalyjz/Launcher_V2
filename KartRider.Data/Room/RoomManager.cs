@@ -164,6 +164,45 @@ public static class RoomManager
         return removed;
     }
 
+    // 昵称变更时同步房间相关数据（改名卡使用后调用）
+    // 需要同步：玩家所在房间映射、房间内成员对象的昵称、Ready 字典键
+    public static void OnNicknameChanged(string oldNickname, string newNickname)
+    {
+        if (string.IsNullOrEmpty(oldNickname) || string.IsNullOrEmpty(newNickname))
+            return;
+        if (oldNickname == newNickname)
+            return;
+
+        // 1. 重映射玩家所在房间（防止旧昵称成为幽灵映射，导致开局/掉线清理时查不到房间）
+        if (_playerRoomMap.TryRemove(oldNickname, out int roomId))
+        {
+            _playerRoomMap[newNickname] = roomId;
+        }
+
+        // 2. 更新房间内成员对象的昵称与 Ready 键（成员对象与 _IDs 引用同一实例，同步 _slots 即可）
+        foreach (var room in _rooms.Values)
+        {
+            foreach (RoomMember member in room._slots)
+            {
+                if (member is Player player && player.Nickname == oldNickname)
+                {
+                    player.Nickname = newNickname;
+                }
+            }
+            foreach (RoomMember member in room.ObIDs)
+            {
+                if (member is Player player && player.Nickname == oldNickname)
+                {
+                    player.Nickname = newNickname;
+                }
+            }
+            if (room.Ready.Remove(oldNickname, out bool ready))
+            {
+                room.Ready[newNickname] = ready;
+            }
+        }
+    }
+
     // 获取指定房间中指定位置的状态
     public static SlotStatus TryGetSlotStatus(int roomId, byte slotId)
     {

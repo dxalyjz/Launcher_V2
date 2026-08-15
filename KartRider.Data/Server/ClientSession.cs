@@ -236,7 +236,11 @@ namespace KartRider
                                 // 3. 更新 ClientManager.NicknameToUserNO
                                 ClientManager.UpdateNickname(oldNickname, newNickname);
 
-                                // 4. 删除可能被意外重建的旧昵称目录
+                                // 4. 同步房间与UDP映射（防止改名后房间开局数据错乱、房间残留幽灵成员）
+                                RoomManager.OnNicknameChanged(oldNickname, newNickname);
+                                UdpServer.OnNicknameChanged(oldNickname, newNickname);
+
+                                // 5. 删除可能被意外重建的旧昵称目录
                                 string oldDir = Path.GetFullPath(Path.Combine(FileName.ProfileDir, oldNickname));
                                 if (Directory.Exists(oldDir))
                                 {

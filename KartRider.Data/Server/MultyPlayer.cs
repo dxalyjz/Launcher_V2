@@ -1544,20 +1544,30 @@ public static class MultyPlayer
             Parent.Client.Send(oPacket);
         }
 
-        foreach (RoomMember member in room.ObIDs)
+        try
         {
-            if (member is Player p)
+            foreach (RoomMember member in room.ObIDs)
             {
-                GrCommandStartPacket(roomId, p);
+                if (member is Player p)
+                {
+                    GrCommandStartPacket(roomId, p);
+                }
+            }
+
+            foreach (RoomMember member in room._IDs)
+            {
+                if (member is Player p)
+                {
+                    GrCommandStartPacket(roomId, p);
+                }
             }
         }
-
-        foreach (RoomMember member in room._IDs)
+        catch (Exception ex)
         {
-            if (member is Player p)
-            {
-                GrCommandStartPacket(roomId, p);
-            }
+            // 开局失败时复位房间状态，避免房间永久卡在 Started 导致无法进入/无法解散
+            Console.WriteLine("[GrSessionDataPacket] Start failed: {0}", ex);
+            room.Started = false;
+            room.StartedPlayerCount = 0;
         }
     }
 
@@ -1628,6 +1638,7 @@ public static class MultyPlayer
         if (room == null)
         {
             Console.WriteLine("GetRoom Failed, roomId = {0}", roomId);
+            return;
         }
         outPacket.WriteString(room.RoomName);
         outPacket.WriteString(room.LockPwd);
