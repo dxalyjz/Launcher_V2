@@ -29,6 +29,9 @@ namespace KartRider
         private readonly object _lockObj = new object();
         private static ConcurrentDictionary<string, (IPEndPoint, uint, bool)> udpClients = new ConcurrentDictionary<string, (IPEndPoint, uint, bool)>();
 
+        // 记录每个玩家最后收到 UDP 数据的时间（毫秒，Environment.TickCount64），用于掉线检测
+        private static ConcurrentDictionary<string, long> udpLastActivity = new ConcurrentDictionary<string, long>();
+
         /// <summary>
         /// 构造函数
         /// </summary>
@@ -195,6 +198,8 @@ namespace KartRider
                                     var clientudp = new IPEndPoint(client.Address, playerConfig.Rider.UdpPort);
                                     p2p = (clientEP == clientudp);
                                     udpClients.AddOrUpdate(nickname, (clientEP, hash, p2p), (key, oldValue) => (clientEP, hash, p2p));
+                                    // 刷新 UDP 心跳：有 UDP 数据说明客户端仍存活
+                                    udpLastActivity[nickname] = Environment.TickCount64;
                                     // Console.WriteLine($"[UDP][{currentTime}][{nickname}] {packetValue}" + ": " + BitConverter.ToString(packetData).Replace("-", " "));
                                 }
                             }
@@ -452,6 +457,39 @@ namespace KartRider
             {
                 // Console.WriteLine($"[{udp}][{currentTime}][{nickname}] {packetValue}: {BitConverter.ToString(outPacket.ToArray()).Replace("-", " ")}");
             }
+        }
+
+        /// <summary>
+        /// 获取指定玩家距最后一次 UDP 数据的空闲毫秒数（用于掉线检测）
+        /// </summary>
+        /// <param name="nickname">玩家昵称</param>
+        /// <param name="now">当前 TickCount64 毫秒</param>
+        /// <returns>空闲毫秒数；若无 UDP 记录返回 long.MaxValue（视为无活动）</returns>
+        public static long GetUdpIdle(string nickname, long now)
+        {
+            if (string.IsNullOrEmpty(nickname))
+            {
+                return long.MaxValue;
+            }
+            if (udpLastActivity.TryGetValue(nickname, out long last))
+            {
+                return now - last;
+            }
+            return long.MaxValue;
+        }
+
+        /// <summary>
+        /// 清理玩家断线后残留的 UDP 会话记录（UDP 地址 + 心跳时间）
+        /// </summary>
+        /// <param name="nickname">玩家昵称</param>
+        public static void RemoveClient(string nickname)
+        {
+            if (string.IsNullOrEmpty(nickname))
+            {
+                return;
+            }
+            udpClients.TryRemove(nickname, out _);
+            udpLastActivity.TryRemove(nickname, out _);
         }
     }
 }

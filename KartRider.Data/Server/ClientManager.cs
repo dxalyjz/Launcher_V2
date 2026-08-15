@@ -45,29 +45,63 @@ public static class ClientManager
     // 移除客户端会话（客户端断开时调用）
     public static void RemoveClient(Socket clientSocket)
     {
-        IPEndPoint clientEndPoint = clientSocket.RemoteEndPoint as IPEndPoint;
-        if (clientEndPoint == null) return;
-
-        string clientId = GetClientId(clientEndPoint);
-
-        if (!_clientSessions.TryGetValue(clientId, out var client) || client == null)
-            return;
-
-        if (!string.IsNullOrEmpty(client.Client.Nickname))
+        try
         {
-            RandomTrack.ClearUsedTracks(client.Client.Nickname);
-            int roomId = RoomManager.TryGetRoomId(client.Client.Nickname);
-            int slotId = RoomManager.GetPlayerSlotId(roomId, client.Client.Nickname);
-            if (slotId != -1)
+            if (clientSocket == null)
+                return;
+
+            IPEndPoint clientEndPoint;
+            try
             {
-                RoomManager.RemovePlayer(roomId, (byte)slotId, client.Client.Nickname);
+                // Socket 已关闭/释放时 RemoteEndPoint 会抛 ObjectDisposedException
+                clientEndPoint = clientSocket.RemoteEndPoint as IPEndPoint;
             }
-            MyRoomData.TryLeaveMyRoom(client.Client.Nickname);
-        }
+            catch
+            {
+                // 无法定位会话来源，直接返回
+                return;
+            }
+            if (clientEndPoint == null) return;
 
-        if (_clientSessions.TryRemove(clientId, out _))
+            string clientId = GetClientId(clientEndPoint);
+
+            if (!_clientSessions.TryGetValue(clientId, out var client) || client == null)
+                return;
+
+            if (!string.IsNullOrEmpty(client.Client.Nickname))
+            {
+                string nickname = client.Client.Nickname;
+                try
+                {
+                    RandomTrack.ClearUsedTracks(nickname);
+                    int roomId = RoomManager.TryGetRoomId(nickname);
+                    int slotId = RoomManager.GetPlayerSlotId(roomId, nickname);
+                    if (slotId != -1)
+                    {
+                        RoomManager.RemovePlayer(roomId, (byte)slotId, nickname);
+                    }
+                    MyRoomData.TryLeaveMyRoom(nickname);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ClientManager] 清理玩家 {nickname} 的房间数据异常：{ex.Message}");
+                }
+                finally
+                {
+                    // 无论房间清理结果如何，都要清理该玩家残留的 UDP 会话记录，
+                    // 避免幽灵玩家的 UDP 地址被继续转发数据
+                    UdpServer.RemoveClient(nickname);
+                }
+            }
+
+            if (_clientSessions.TryRemove(clientId, out _))
+            {
+                Console.WriteLine($"客户端 {clientId} 已断开，当前在线数：{_clientSessions.Count}");
+            }
+        }
+        catch (Exception ex)
         {
-            Console.WriteLine($"客户端 {clientId} 已断开，当前在线数：{_clientSessions.Count}");
+            Console.WriteLine($"[ClientManager] 移除客户端异常：{ex.Message}");
         }
     }
 

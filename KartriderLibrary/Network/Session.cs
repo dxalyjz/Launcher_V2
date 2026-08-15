@@ -60,6 +60,13 @@ namespace KartRider.Common.Network
             set;
         }
 
+        // 最后收到数据的时间（用于心跳/掉线检测，Environment.TickCount64 毫秒）
+        public long LastReceiveTime
+        {
+            get;
+            set;
+        }
+
         private SocketAsyncEventArgs mReadEventArgs
         {
             get;
@@ -83,11 +90,25 @@ namespace KartRider.Common.Network
         public Session(System.Net.Sockets.Socket socket)
         {
             this._socket = socket;
+            this.LastReceiveTime = Environment.TickCount64;
             this.mWriteEventArgs = new SocketAsyncEventArgs()
             {
                 DisconnectReuseSocket = false
             };
             this.mWriteEventArgs.Completed += new EventHandler<SocketAsyncEventArgs>((object s, SocketAsyncEventArgs a) => this.EndSend(a));
+            // 启用 TCP KeepAlive（OS 层检测"半开连接"）：空闲 30 秒后开始探测，
+            // 每 5 秒探测一次，连续 3 次失败判定连接已死，进而触发 EndReceive 异常 -> Disconnect
+            try
+            {
+                this._socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                this._socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, 30);
+                this._socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, 5);
+                this._socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, 3);
+            }
+            catch
+            {
+                // 平台不支持 KeepAlive 参数时忽略，由应用层心跳检测兜底
+            }
             this.WaitForData();
         }
 
@@ -237,6 +258,8 @@ namespace KartRider.Common.Network
                     }
                     if (num > 0)
                     {
+                        // 刷新心跳时间：客户端有数据到达说明连接仍存活
+                        this.LastReceiveTime = Environment.TickCount64;
                         this.Append(this.mSharedBuffer, 0, num);
                         while (true)
                         {

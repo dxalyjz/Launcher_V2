@@ -123,9 +123,10 @@ public static class MultyPlayer
         bool allReady = true;
 
         // 第一步：遍历字典值，检查是否有false
-        foreach (bool value in room.Ready.Values)
+        // 假死玩家（TCP/UDP 双通道近期无活动）未就绪不再阻塞其他玩家开始游戏
+        foreach (KeyValuePair<string, bool> kv in room.Ready)
         {
-            if (!value) // 只要有一个值为false，标记为未全部就绪
+            if (!kv.Value && HeartbeatMonitor.IsPlayerAlive(kv.Key))
             {
                 allReady = false;
                 break; // 找到false后提前退出遍历，提升效率
@@ -144,9 +145,10 @@ public static class MultyPlayer
 
             // 模拟：重新检查字典值（实际场景中可替换为刷新数据的逻辑）
             allReady = true;
-            foreach (bool value in room.Ready.Values)
+            foreach (KeyValuePair<string, bool> kv in room.Ready)
             {
-                if (!value)
+                // 假死玩家未就绪不影响其他玩家，直接跳过
+                if (!kv.Value && HeartbeatMonitor.IsPlayerAlive(kv.Key))
                 {
                     allReady = false;
                     break;
@@ -1352,8 +1354,9 @@ public static class MultyPlayer
                 var pConfig = ProfileService.GetProfileConfig(p.Nickname);
                 if (pConfig?.Rider == null)
                 {
-                    Console.WriteLine("[GrSlotDataPacket] Warning: ProfileConfig or Rider is null for player {0}, skipping", p.Nickname);
-                    outPacket.WriteInt(0);
+                    Console.WriteLine("[GrSlotDataPacket] Warning: ProfileConfig or Rider is null for player {0}, writing placeholder", p.Nickname);
+                    // 写入完整占位记录，避免半截记录导致广播包畸形、拖垮房间内其他玩家
+                    WriteEmptyPlayerSlotRecord(outPacket);
                     continue;
                 }
 
@@ -1370,8 +1373,9 @@ public static class MultyPlayer
                 IPEndPoint client = ClientManager.ClientToIPEndPoint(pConfig.Rider.ClientId);
                 if (client == null)
                 {
-                    Console.WriteLine("[GrSlotDataPacket] Warning: Client endpoint is null for player {0}, ClientId={1}, skipping", p.Nickname, pConfig.Rider.ClientId);
-                    outPacket.WriteInt(0);
+                    Console.WriteLine("[GrSlotDataPacket] Warning: Client endpoint is null for player {0}, ClientId={1}, writing placeholder", p.Nickname, pConfig.Rider.ClientId);
+                    // 写入完整占位记录，避免畸形包影响房间内其他玩家
+                    WriteEmptyPlayerSlotRecord(outPacket);
                     continue;
                 }
                 outPacket.WriteEndPoint(new IPEndPoint(client.Address, pConfig.Rider.P2pPort));
@@ -1474,8 +1478,8 @@ public static class MultyPlayer
                 var pConfig = ProfileService.GetProfileConfig(p.Nickname);
                 if (pConfig?.Rider == null)
                 {
-                    Console.WriteLine("[GrSlotDataPacket] Warning: ProfileConfig or Rider is null for observer {0}, skipping", p.Nickname);
-                    outPacket.WriteInt(0);
+                    Console.WriteLine("[GrSlotDataPacket] Warning: ProfileConfig or Rider is null for observer {0}, writing placeholder", p.Nickname);
+                    WriteEmptyObserverRecord(outPacket);
                     continue;
                 }
                 outPacket.WriteInt(p.PlayerType);
@@ -1483,8 +1487,8 @@ public static class MultyPlayer
                 IPEndPoint client = ClientManager.ClientToIPEndPoint(pConfig.Rider.ClientId);
                 if (client == null)
                 {
-                    Console.WriteLine("[GrSlotDataPacket] Warning: Client endpoint is null for observer {0}, ClientId={1}, skipping", p.Nickname, pConfig.Rider.ClientId);
-                    outPacket.WriteInt(0);
+                    Console.WriteLine("[GrSlotDataPacket] Warning: Client endpoint is null for observer {0}, ClientId={1}, writing placeholder", p.Nickname, pConfig.Rider.ClientId);
+                    WriteEmptyObserverRecord(outPacket);
                     continue;
                 }
                 outPacket.WriteEndPoint(new IPEndPoint(client.Address, pConfig.Rider.P2pPort));
@@ -1498,6 +1502,100 @@ public static class MultyPlayer
         }
 
         Position(roomId, outPacket);
+    }
+
+    /// <summary>
+    /// 写入结构完整、字段全为 0 的玩家槽位占位记录。
+    /// 玩家档案缺失或端点无法解析时使用，保证 GrSlotDataPacket 包结构完整，
+    /// 避免畸形广播包导致房间内其他玩家掉线。
+    /// </summary>
+    static void WriteEmptyPlayerSlotRecord(OutPacket outPacket)
+    {
+        outPacket.WriteInt(0);                                             // PlayerType
+        outPacket.WriteUInt(0);                                            // UserNO
+        outPacket.WriteEndPoint(new IPEndPoint(IPAddress.Any, 0));         // P2P 端点
+        outPacket.WriteEndPoint(new IPEndPoint(IPAddress.Any, 0));         // 备用端点
+        outPacket.WriteString("");                                         // Nickname
+        outPacket.WriteShort(0);                                           // Emblem1
+        outPacket.WriteShort(0);                                           // Emblem2
+        outPacket.WriteShort(0);
+        for (int i = 0; i < 30; i++) outPacket.WriteUShort(0);             // GetRider 前 30 项
+        outPacket.WriteByte(0);                                            // GetRider 中间 1 项
+        for (int i = 0; i < 7; i++) outPacket.WriteUShort(0);              // GetRider 后 7 项
+        outPacket.WriteString("");                                         // Card
+        outPacket.WriteUInt(0);                                            // RP
+        outPacket.WriteByte(0);                                            // Team
+        outPacket.WriteInt(0);                                             // Ranking
+        outPacket.WriteBytes(new byte[30]);
+        outPacket.WriteInt(0);                                             // 1500
+        outPacket.WriteInt(0);                                             // 1499
+        outPacket.WriteInt(0);
+        outPacket.WriteInt(0);                                             // 2000
+        outPacket.WriteInt(0);                                             // 5
+        outPacket.WriteHexString("FF 00 00 00");
+        outPacket.WriteByte(0);                                            // catLevel
+        outPacket.WriteString("");                                         // ClubName
+        outPacket.WriteInt(0);                                             // ClubMark_LOGO
+        outPacket.WriteBytes(new byte[19]);
+    }
+
+    /// <summary>
+    /// 写入结构完整、字段全为 0 的观察者占位记录。
+    /// </summary>
+    static void WriteEmptyObserverRecord(OutPacket outPacket)
+    {
+        outPacket.WriteInt(0);                                             // PlayerType
+        outPacket.WriteUInt(0);                                            // UserNO
+        outPacket.WriteEndPoint(new IPEndPoint(IPAddress.Any, 0));         // P2P 端点
+        outPacket.WriteEndPoint(new IPEndPoint(IPAddress.Any, 0));         // 备用端点
+        outPacket.WriteString("");                                         // Nickname
+    }
+
+    /// <summary>
+    /// 写入结构完整的比赛结果占位记录。
+    /// 玩家档案缺失时使用，保证记录数与 playerCount 一致，避免结果包畸形导致其他玩家掉线。
+    /// </summary>
+    static void WriteEmptyResultRecord(OutPacket outPacket, Player p4, GameRoom room, Dictionary<int, uint> timeData, Dictionary<int, int> ranking)
+    {
+        outPacket.WriteInt(p4.ID);                                         // player id
+        outPacket.WriteUInt(timeData.TryGetValue(p4.ID, out uint pTime) ? pTime : uint.MaxValue);
+        outPacket.WriteByte();
+        outPacket.WriteUShort(0);                                          // Set_Kart
+        int phRanking = ranking.TryGetValue(p4.ID, out int phRank) ? phRank : 0;
+        outPacket.WriteInt(phRanking);
+        if (room.GameType == 3 || room.GameType == 4)
+        {
+            outPacket.WriteShort(2);
+        }
+        else
+        {
+            outPacket.WriteShort(0);
+        }
+        outPacket.WriteByte();
+        outPacket.WriteUInt(0);                                            // RP
+        outPacket.WriteUInt(0);                                            // Earned RP
+        outPacket.WriteUInt(0);                                            // Earned Lucci
+        outPacket.WriteUInt(0);                                            // Lucci
+        outPacket.WriteBytes(new byte[29]);
+        if (room.GameType == 3 || room.GameType == 4)
+        {
+            outPacket.WriteInt(0);                                         // playerPoint
+            outPacket.WriteByte(p4.Team);                                  // Team
+        }
+        else
+        {
+            outPacket.WriteInt(0);
+            outPacket.WriteByte(0);
+        }
+        outPacket.WriteBytes(new byte[12]);
+        outPacket.WriteInt(1);
+        outPacket.WriteByte(0);
+        outPacket.WriteUShort(0);                                          // Set_Character
+        outPacket.WriteBytes(new byte[49]);
+        outPacket.WriteHexString("FF");
+        outPacket.WriteBytes(new byte[37]);
+        outPacket.WriteInt(0);                                             // ClubMark_LOGO
+        outPacket.WriteBytes(new byte[39]);
     }
 
     static void GrSessionDataPacket(SessionGroup Parent)
@@ -2160,7 +2258,9 @@ public static class MultyPlayer
                     var p4Config = ProfileService.GetProfileConfig(p4.Nickname);
                     if (p4Config?.RiderItem == null)
                     {
-                        Console.WriteLine("[GrGameResultPacket] Warning: ProfileConfig or RiderItem is null for {0}, skipping", p4.Nickname);
+                        // 档案缺失：写入结构完整的占位记录，保证记录数与 playerCount 一致，避免结果包畸形
+                        Console.WriteLine("[GrGameResultPacket] Warning: ProfileConfig or RiderItem is null for {0}, writing placeholder", p4.Nickname);
+                        WriteEmptyResultRecord(outPacket, p4, room, timeData, ranking);
                         continue;
                     }
 

@@ -120,6 +120,9 @@ namespace KartRider
             {
                 TinyMapper.Start();
             }
+
+            // 启动心跳/掉线检测监控，及时清理假死连接（幽灵玩家）
+            HeartbeatMonitor.Start();
         }
 
         /// <summary>
@@ -156,6 +159,9 @@ namespace KartRider
 
             // 停止 TinyMapper 端口转发
             TinyMapper.Stop();
+
+            // 停止心跳/掉线检测监控
+            HeartbeatMonitor.Stop();
 
             Console.WriteLine("[RouterListener] 所有服务已停止");
         }

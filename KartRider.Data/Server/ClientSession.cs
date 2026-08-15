@@ -3948,26 +3948,6 @@ namespace KartRider
                     }
                     else if (hash == Adler32Helper.GenerateAdler32_ASCII("LoPingRequestPacket", 0))
                     {
-                        foreach (var client in ClientManager.GetClients())
-                        {
-                            try
-                            {
-                                using (OutPacket outPacket = new OutPacket("PrServerTime"))
-                                {
-                                    outPacket.WriteDateTime(DateTime.Now);
-                                    client.Client.Send(outPacket);
-                                }
-                            }
-                            catch
-                            {
-                                // 发送失败，断开该客户端连接并从在线列表中移除
-                                Console.WriteLine($"[PrServerTime] 玩家 {client.Client.Nickname} 发送失败，主动断开连接");
-                                if (client.Client.Socket != null)
-                                {
-                                    client.Client.Disconnect();
-                                }
-                            }
-                        }
                         return;
                     }
                     else

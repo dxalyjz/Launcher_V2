@@ -255,14 +255,22 @@ public class GameRoom
                 {
                     if (p1.ID == RoomMaster)
                     {
+                        // 房主离开：将房主转移给其他仍在房间的玩家（跳过离开者自身）
+                        bool transferred = false;
                         foreach (RoomMember member in _IDs)
                         {
-                            if (member is Player p2)
+                            if (member is Player p2 && p2.ID != p1.ID)
                             {
                                 RoomMaster = p2.ID;
                                 p2.PlayerType = 2;
+                                transferred = true;
                                 break;
                             }
+                        }
+                        if (!transferred)
+                        {
+                            // 房间内已无其他玩家，房间随后会被删除
+                            RoomMaster = p1.ID;
                         }
                     }
                     ObIDs[slotId] = null;
@@ -281,14 +289,23 @@ public class GameRoom
                 {
                     if (player.ID == RoomMaster)
                     {
+                        // 房主离开：将房主转移给其他仍在房间的玩家（跳过离开者自身，
+                        // 否则 _IDs 中第一个 Player 就是离开的房主自己，导致房间失去房主）
+                        bool transferred = false;
                         foreach (RoomMember member in _IDs)
                         {
-                            if (member is Player p)
+                            if (member is Player p && p.ID != player.ID)
                             {
                                 RoomMaster = p.ID;
                                 p.PlayerType = 2;
+                                transferred = true;
                                 break;
                             }
+                        }
+                        if (!transferred)
+                        {
+                            // 房间内已无其他玩家，房间随后会被删除
+                            RoomMaster = player.ID;
                         }
                     }
                     _IDs[player.ID] = null;
