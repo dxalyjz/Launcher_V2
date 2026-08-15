@@ -261,7 +261,9 @@ namespace KartRider
             var config = ProfileService.GetProfileConfig(Nickname);
             if (config?.RiderItem == null)
             {
-                Console.WriteLine("[GetRider] Warning: ProfileConfig or RiderItem is null for {0}", Nickname);
+                // 档案缺失：补齐等长的全零装备数据，保证包结构完整，避免畸形包影响其他玩家
+                Console.WriteLine("[GetRider] Warning: ProfileConfig or RiderItem is null for {0}, writing zero rider data", Nickname);
+                WriteZeroRiderData(outPacket);
                 return;
             }
             outPacket.WriteUShort(config.RiderItem.Set_Character);
@@ -302,6 +304,23 @@ namespace KartRider
             outPacket.WriteUShort(config.RiderItem.Set_KartTailLamp12);
             outPacket.WriteUShort(config.RiderItem.Set_KartBoosterEffect12);
             outPacket.WriteUShort(config.RiderItem.Set_Unknown5);
+        }
+
+        /// <summary>
+        /// 写入等长的全零装备数据（30×UShort + 1×Byte + 7×UShort），
+        /// 用于档案缺失时保持包结构完整，不产生畸形广播包。
+        /// </summary>
+        static void WriteZeroRiderData(OutPacket outPacket)
+        {
+            for (int i = 0; i < 30; i++)
+            {
+                outPacket.WriteUShort(0);
+            }
+            outPacket.WriteByte(0);
+            for (int i = 0; i < 7; i++)
+            {
+                outPacket.WriteUShort(0);
+            }
         }
 
         public static void PrGetRiderInfo(string nickname, SessionGroup Parent)
