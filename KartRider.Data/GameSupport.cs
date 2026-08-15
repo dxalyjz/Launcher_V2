@@ -261,66 +261,57 @@ namespace KartRider
             var config = ProfileService.GetProfileConfig(Nickname);
             if (config?.RiderItem == null)
             {
-                // 档案缺失：补齐等长的全零装备数据，保证包结构完整，避免畸形包影响其他玩家
-                Console.WriteLine("[GetRider] Warning: ProfileConfig or RiderItem is null for {0}, writing zero rider data", Nickname);
-                WriteZeroRiderData(outPacket);
+                // 档案缺失：使用 RiderItemData 默认初始数据补齐，保证包结构完整，避免畸形包影响其他玩家
+                Console.WriteLine("[GetRider] Warning: ProfileConfig or RiderItem is null for {0}, writing default rider data", Nickname);
+                WriteRiderItem(new RiderItemData(), outPacket);
                 return;
             }
-            outPacket.WriteUShort(config.RiderItem.Set_Character);
-            outPacket.WriteUShort(config.RiderItem.Set_Paint);
-            outPacket.WriteUShort(config.RiderItem.Set_Kart);
-            outPacket.WriteUShort(config.RiderItem.Set_Plate);
-            outPacket.WriteUShort(config.RiderItem.Set_Goggle);
-            outPacket.WriteUShort(config.RiderItem.Set_Balloon);
-            outPacket.WriteUShort(config.RiderItem.Set_Unknown1);
-            outPacket.WriteUShort(config.RiderItem.Set_HeadBand);
-            outPacket.WriteUShort(config.RiderItem.Set_HeadPhone);
-            outPacket.WriteUShort(config.RiderItem.Set_HandGearL);
-            outPacket.WriteUShort(config.RiderItem.Set_Unknown2);
-            outPacket.WriteUShort(config.RiderItem.Set_Uniform);
-            outPacket.WriteUShort(config.RiderItem.Set_Decal);
-            outPacket.WriteUShort(config.RiderItem.Set_Pet);
-            outPacket.WriteUShort(config.RiderItem.Set_FlyingPet);
-            outPacket.WriteUShort(config.RiderItem.Set_Aura);
-            outPacket.WriteUShort(config.RiderItem.Set_SkidMark);
-            outPacket.WriteUShort(config.RiderItem.Set_SpecialKit);
-            outPacket.WriteUShort(config.RiderItem.Set_RidColor);
-            outPacket.WriteUShort(config.RiderItem.Set_BonusCard);
-            outPacket.WriteUShort(config.RiderItem.Set_BossModeCard);
-            outPacket.WriteUShort(config.RiderItem.Set_KartPlant1);
-            outPacket.WriteUShort(config.RiderItem.Set_KartPlant2);
-            outPacket.WriteUShort(config.RiderItem.Set_KartPlant3);
-            outPacket.WriteUShort(config.RiderItem.Set_KartPlant4);
-            outPacket.WriteUShort(config.RiderItem.Set_Unknown3);
-            outPacket.WriteUShort(config.RiderItem.Set_FishingPole);
-            outPacket.WriteUShort(config.RiderItem.Set_Tachometer);
-            outPacket.WriteUShort(config.RiderItem.Set_Dye);
-            outPacket.WriteUShort(config.RiderItem.Set_KartSN);
-            outPacket.WriteByte(config.RiderItem.Set_Unknown4);
-            outPacket.WriteUShort(config.RiderItem.Set_KartCoating);
-            outPacket.WriteUShort(config.RiderItem.Set_KartTailLamp);
-            outPacket.WriteUShort(config.RiderItem.Set_slotBg);
-            outPacket.WriteUShort(config.RiderItem.Set_KartCoating12);
-            outPacket.WriteUShort(config.RiderItem.Set_KartTailLamp12);
-            outPacket.WriteUShort(config.RiderItem.Set_KartBoosterEffect12);
-            outPacket.WriteUShort(config.RiderItem.Set_Unknown5);
+            WriteRiderItem(config.RiderItem, outPacket);
         }
 
         /// <summary>
-        /// 写入等长的全零装备数据（30×UShort + 1×Byte + 7×UShort），
-        /// 用于档案缺失时保持包结构完整，不产生畸形广播包。
+        /// 按固定字段顺序写入装备数据（30×UShort + 1×Byte + 7×UShort）。
         /// </summary>
-        static void WriteZeroRiderData(OutPacket outPacket)
+        static void WriteRiderItem(RiderItemData item, OutPacket outPacket)
         {
-            for (int i = 0; i < 30; i++)
-            {
-                outPacket.WriteUShort(0);
-            }
-            outPacket.WriteByte(0);
-            for (int i = 0; i < 7; i++)
-            {
-                outPacket.WriteUShort(0);
-            }
+            outPacket.WriteUShort(item.Set_Character);
+            outPacket.WriteUShort(item.Set_Paint);
+            outPacket.WriteUShort(item.Set_Kart);
+            outPacket.WriteUShort(item.Set_Plate);
+            outPacket.WriteUShort(item.Set_Goggle);
+            outPacket.WriteUShort(item.Set_Balloon);
+            outPacket.WriteUShort(item.Set_Unknown1);
+            outPacket.WriteUShort(item.Set_HeadBand);
+            outPacket.WriteUShort(item.Set_HeadPhone);
+            outPacket.WriteUShort(item.Set_HandGearL);
+            outPacket.WriteUShort(item.Set_Unknown2);
+            outPacket.WriteUShort(item.Set_Uniform);
+            outPacket.WriteUShort(item.Set_Decal);
+            outPacket.WriteUShort(item.Set_Pet);
+            outPacket.WriteUShort(item.Set_FlyingPet);
+            outPacket.WriteUShort(item.Set_Aura);
+            outPacket.WriteUShort(item.Set_SkidMark);
+            outPacket.WriteUShort(item.Set_SpecialKit);
+            outPacket.WriteUShort(item.Set_RidColor);
+            outPacket.WriteUShort(item.Set_BonusCard);
+            outPacket.WriteUShort(item.Set_BossModeCard);
+            outPacket.WriteUShort(item.Set_KartPlant1);
+            outPacket.WriteUShort(item.Set_KartPlant2);
+            outPacket.WriteUShort(item.Set_KartPlant3);
+            outPacket.WriteUShort(item.Set_KartPlant4);
+            outPacket.WriteUShort(item.Set_Unknown3);
+            outPacket.WriteUShort(item.Set_FishingPole);
+            outPacket.WriteUShort(item.Set_Tachometer);
+            outPacket.WriteUShort(item.Set_Dye);
+            outPacket.WriteUShort(item.Set_KartSN);
+            outPacket.WriteByte(item.Set_Unknown4);
+            outPacket.WriteUShort(item.Set_KartCoating);
+            outPacket.WriteUShort(item.Set_KartTailLamp);
+            outPacket.WriteUShort(item.Set_slotBg);
+            outPacket.WriteUShort(item.Set_KartCoating12);
+            outPacket.WriteUShort(item.Set_KartTailLamp12);
+            outPacket.WriteUShort(item.Set_KartBoosterEffect12);
+            outPacket.WriteUShort(item.Set_Unknown5);
         }
 
         public static void PrGetRiderInfo(string nickname, SessionGroup Parent)
