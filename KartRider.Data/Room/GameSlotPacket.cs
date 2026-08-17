@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Xml.Linq;
 using ExcData;
 using KartRider.IO.Packet;
 using Profile;
@@ -8,6 +10,50 @@ namespace KartRider;
 
 public class SlotData
 {
+    // 个人道具赛概率配置（技能 id 取 item 的 idx 属性），Rho.cs 加载资源文件成功时会被覆盖
+    public static XDocument itemProb_indi = BuildItemProb(
+        @"<item name=""香蕉皮"" idx=""8"" toprank=""25"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""乌云"" idx=""114"" toprank=""20"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""盾牌"" idx=""10"" toprank=""40"" highrank=""25"" midrank=""0"" lowrank=""0""/>
+          <item name=""电磁波"" idx=""12"" toprank=""15"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""大魔王"" idx=""2"" toprank=""0"" highrank=""2"" midrank=""2"" lowrank=""2""/>
+          <item name=""追踪导弹"" idx=""33"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""3""/>
+          <item name=""飞碟"" idx=""3"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""6""/>
+          <item name=""路障"" idx=""113"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""5""/>
+          <item name=""导弹"" idx=""7"" toprank=""0"" highrank=""23"" midrank=""20"" lowrank=""0""/>
+          <item name=""水炸弹"" idx=""9"" toprank=""0"" highrank=""20"" midrank=""11"" lowrank=""0""/>
+          <item name=""水苍蝇"" idx=""4"" toprank=""0"" highrank=""25"" midrank=""10"" lowrank=""0""/>
+          <item name=""闪电"" idx=""111"" toprank=""0"" highrank=""0"" midrank=""3"" lowrank=""1""/>
+          <item name=""加速器"" idx=""6"" toprank=""0"" highrank=""0"" midrank=""24"" lowrank=""51""/>
+          <item name=""磁铁"" idx=""5"" toprank=""0"" highrank=""5"" midrank=""15"" lowrank=""32""/>");
+
+    // 组队道具赛概率配置（技能 id 取 item 的 idx 属性），Rho.cs 加载资源文件成功时会被覆盖
+    public static XDocument itemProb_team = BuildItemProb(
+        @"<item name=""香蕉皮"" idx=""8"" toprank=""25"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""乌云"" idx=""114"" toprank=""20"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""盾牌"" idx=""10"" toprank=""40"" highrank=""25"" midrank=""0"" lowrank=""0""/>
+          <item name=""电磁波"" idx=""12"" toprank=""13"" highrank=""0"" midrank=""5"" lowrank=""0""/>
+          <item name=""大魔王"" idx=""2"" toprank=""0"" highrank=""2"" midrank=""2"" lowrank=""2""/>
+          <item name=""追踪导弹"" idx=""33"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""3""/>
+          <item name=""飞碟"" idx=""3"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""3""/>
+          <item name=""路障"" idx=""113"" toprank=""0"" highrank=""0"" midrank=""5"" lowrank=""5""/>
+          <item name=""导弹"" idx=""7"" toprank=""0"" highrank=""23"" midrank=""13"" lowrank=""0""/>
+          <item name=""水炸弹"" idx=""9"" toprank=""0"" highrank=""15"" midrank=""7"" lowrank=""0""/>
+          <item name=""水苍蝇"" idx=""4"" toprank=""0"" highrank=""25"" midrank=""10"" lowrank=""0""/>
+          <item name=""闪电"" idx=""111"" toprank=""0"" highrank=""0"" midrank=""3"" lowrank=""1""/>
+          <item name=""加速器"" idx=""6"" toprank=""0"" highrank=""0"" midrank=""20"" lowrank=""55""/>
+          <item name=""磁铁"" idx=""5"" toprank=""0"" highrank=""5"" midrank=""12"" lowrank=""27""/>
+          <item name=""透视镜"" idx=""109"" toprank=""12"" highrank=""0"" midrank=""0"" lowrank=""0""/>
+          <item name=""道具锁"" idx=""110"" toprank=""0"" highrank=""0"" midrank=""3"" lowrank=""2""/>
+          <item name=""天使"" idx=""11"" toprank=""0"" highrank=""2"" midrank=""5"" lowrank=""2""/>
+          <item name=""定时水炸弹"" idx=""13"" toprank=""0"" highrank=""3"" midrank=""5"" lowrank=""0""/>");
+
+    // 构建道具概率配置 XDocument
+    static XDocument BuildItemProb(string itemsXml)
+    {
+        return XDocument.Parse($"<items>{itemsXml}</items>");
+    }
+
     private static readonly Random _random = new Random();
 
     public static void GameSlotPacket(SessionGroup Parent, InPacket iPacket)
@@ -30,7 +76,7 @@ public class SlotData
             if (type <= 2)
             {
                 byte[] data1 = iPacket.ReadBytes(25);
-                short skill1 = iPacket.ReadShort();
+                short playerRank = iPacket.ReadShort();
                 byte unk1 = iPacket.ReadByte();
                 byte[] data2 = iPacket.ReadBytes(4);
                 byte unk2 = iPacket.ReadByte();
@@ -38,7 +84,7 @@ public class SlotData
                 byte[] data3 = iPacket.ReadBytes(21);
                 int id2 = iPacket.ReadInt();
                 uint ticks = iPacket.ReadUInt();
-                short skill = RandomItemSkill(Parent.Client.Nickname, room.GameType);
+                short skill = RandomItemSkill(Parent.Client.Nickname, room.GameType, playerRank);
                 using (OutPacket oPacket = new OutPacket("GameSlotPacket"))
                 {
                     oPacket.WriteInt(id);
@@ -134,25 +180,91 @@ public class SlotData
         }
     }
 
-    public static short RandomItemSkill(string Nickname, byte gameType)
+    public static short RandomItemSkill(string Nickname, byte gameType, short playerRank)
     {
+        XDocument doc;
         if (gameType == 2)
         {
-            Random random = new Random();
-            int index = random.Next(MultyPlayer.itemProb_indi.Count);
-            short skill = MultyPlayer.itemProb_indi[index];
-            skill = GetItemSkill(Nickname, skill);
-            return skill;
+            doc = itemProb_indi;
         }
         else if (gameType == 4)
         {
-            Random random = new Random();
-            int index = random.Next(MultyPlayer.itemProb_team.Count);
-            short skill = MultyPlayer.itemProb_team[index];
-            skill = GetItemSkill(Nickname, skill);
-            return skill;
+            doc = itemProb_team;
         }
-        return 0;
+        else
+        {
+            return 0;
+        }
+
+        if (doc == null)
+        {
+            return 0;
+        }
+
+        List<XElement> items = doc.Descendants("item").ToList();
+        if (items.Count == 0)
+        {
+            return 0;
+        }
+
+        Random random = new Random();
+        short skill;
+        // 其他名次（排名不在 1~8 名范围）：全部技能随机
+        if (playerRank < 0 || playerRank > 7)
+        {
+            skill = GetItemIdx(items[random.Next(items.Count)]);
+        }
+        else
+        {
+            // 名次对应权重列：第1名 toprank / 第2~4名 highrank / 第5~7名 midrank / 第8名 lowrank
+            string rankAttr = playerRank switch
+            {
+                0 => "toprank",
+                >= 1 and <= 3 => "highrank",
+                >= 4 and <= 6 => "midrank",
+                _ => "lowrank"
+            };
+            skill = WeightedRandomItem(items, rankAttr, random);
+        }
+        skill = GetItemSkill(Nickname, skill);
+        return skill;
+    }
+
+    // 按权重列加权随机选取道具，返回技能 id（item 的 idx 属性）
+    private static short WeightedRandomItem(List<XElement> items, string rankAttr, Random random)
+    {
+        var weightedItems = items
+            .Select(item => new { Item = item, Weight = ParseWeight(item, rankAttr) })
+            .Where(x => x.Weight > 0)
+            .ToList();
+
+        // 该名次权重全为 0（无对应道具）：退化为全部技能随机
+        if (weightedItems.Count == 0)
+        {
+            return GetItemIdx(items[random.Next(items.Count)]);
+        }
+
+        int totalWeight = weightedItems.Sum(x => x.Weight);
+        int roll = random.Next(totalWeight);
+        foreach (var entry in weightedItems)
+        {
+            roll -= entry.Weight;
+            if (roll < 0)
+            {
+                return GetItemIdx(entry.Item);
+            }
+        }
+        return GetItemIdx(weightedItems[weightedItems.Count - 1].Item);
+    }
+
+    private static int ParseWeight(XElement item, string rankAttr)
+    {
+        return int.TryParse(item.Attribute(rankAttr)?.Value, out int weight) ? weight : 0;
+    }
+
+    private static short GetItemIdx(XElement item)
+    {
+        return short.TryParse(item.Attribute("idx")?.Value, out short idx) ? idx : (short)0;
     }
 
     public static short GetItemSkill(string Nickname, short skill)

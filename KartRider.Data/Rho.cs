@@ -600,22 +600,7 @@ namespace KartRider
                             byte[] data = packFileInfo.GetData();
                             using (MemoryStream stream = new MemoryStream(BmlToXml(fullName, data)))
                             {
-                                XDocument doc = XDocument.Load(stream);
-                                foreach (var item in doc.Descendants("item"))
-                                {
-                                    // 获取 idx 属性值
-                                    string idxValue = item.Attribute("idx")?.Value;
-
-                                    // 验证并转换为 short 类型
-                                    if (short.TryParse(idxValue, out short idx))
-                                    {
-                                        MultyPlayer.itemProb_indi.Add(idx);
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine($"无法将 '{idxValue}' 转换为 short 类型");
-                                    }
-                                }
+                                SlotData.itemProb_indi = XDocument.Load(stream);
                             }
                         }
                         if (fullName == "item/slot/itemProb_team@zz.bml")
@@ -624,22 +609,7 @@ namespace KartRider
                             byte[] data = packFileInfo.GetData();
                             using (MemoryStream stream = new MemoryStream(BmlToXml(fullName, data)))
                             {
-                                XDocument doc = XDocument.Load(stream);
-                                foreach (var item in doc.Descendants("item"))
-                                {
-                                    // 获取 idx 属性值
-                                    string idxValue = item.Attribute("idx")?.Value;
-
-                                    // 验证并转换为 short 类型
-                                    if (short.TryParse(idxValue, out short idx))
-                                    {
-                                        MultyPlayer.itemProb_team.Add(idx);
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine($"无法将 '{idxValue}' 转换为 short 类型");
-                                    }
-                                }
+                                SlotData.itemProb_team = XDocument.Load(stream);
                             }
                         }
                         if (fullName == $"zeta_/{regionCode}/content/basicAI.xml")

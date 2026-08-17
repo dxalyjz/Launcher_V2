@@ -231,7 +231,7 @@ namespace ExcData
                     Kart.driftGaugeFactor = 0f;
                     Kart.chargeAntiCollideBalance = 0f;
 
-                    Kart.startItemId = SlotData.RandomItemSkill(Nickname, 2);
+                    Kart.startItemId = SlotData.RandomItemSkill(Nickname, 2, -1);
                 }
                 else if (Kart.defaultExceedType == 2)//S
                 {

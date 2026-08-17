@@ -21,8 +21,6 @@ namespace KartRider;
 
 public static class MultyPlayer
 {
-    public static List<short> itemProb_indi = new List<short>();
-    public static List<short> itemProb_team = new List<short>();
     public static Dictionary<short, AICharacter> aiCharacterDict = new Dictionary<short, AICharacter>();
     public static Dictionary<short, AIKart> aiKartDict = new Dictionary<short, AIKart>();
     public static Dictionary<string, byte> StartTimeAttack = new Dictionary<string, byte>();
@@ -41,7 +39,7 @@ public static class MultyPlayer
         {
             return serverEndPoint;
         }
-        else if(!string.IsNullOrEmpty(RouterListener.ServerIP))
+        else if (!string.IsNullOrEmpty(RouterListener.ServerIP))
         {
             int serverPort = ProfileService.SettingConfig.ServerPort;
             return new IPEndPoint(IPAddress.Parse(RouterListener.ServerIP), serverPort);
