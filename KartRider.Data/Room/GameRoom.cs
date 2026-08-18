@@ -32,6 +32,97 @@ public class GameRoom
     public Dictionary<int, int> Ranking { get; set; } = new Dictionary<int, int>();
     public Dictionary<string, bool> Ready { get; set; } = new Dictionary<string, bool>();
 
+    // 玩家实时赛道跟踪：id -> 坐标/圈数/累计里程（道具赛位置包走TCP逐连接填充）
+    public Dictionary<int, TrackPos> Tracks { get; set; } = new Dictionary<int, TrackPos>();
+
+    // 更新玩家位置跟踪：累计里程、检测过线圈数
+    public void UpdateTrack(int id, float x, float y, uint ts1)
+    {
+        if (!Tracks.TryGetValue(id, out TrackPos t))
+        {
+            // 首次采样：默认在起点区（起跑线附近），圈数从 0 开始
+            Tracks[id] = new TrackPos
+            {
+                X = x,
+                Y = y,
+                Ts = ts1,
+                InStartZone = x >= 400f && y < 200f
+            };
+            return;
+        }
+
+        // 起点区判定提前：起点区内（开局倒车/原地微调）不累计里程、不建立方向参考
+        bool inStart = x >= 400f && y < 200f;
+
+        // ts1 不连续（断线/重连/时钟域跳变）：不累计位移，防止坐标跳变污染里程
+        bool gap = !t.HasPrev || ts1 < t.Ts || ts1 - t.Ts > 30000;
+        if (!gap)
+        {
+            float dx = x - t.X;
+            float dy = y - t.Y;
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (dist > 0.001f) // 忽略原地不动
+            {
+                if (!t.HasDir)
+                {
+                    if (!inStart)
+                    {
+                        // 已离开起点区的首段位移：累计并建立前进方向参考，
+                        // 避免开局倒车把方向基准建反（倒车方向留在起点区内，被 inStart 拦截）
+                        t.TotalDist += dist;
+                        t.DirX = dx / dist;
+                        t.DirY = dy / dist;
+                        t.HasDir = true;
+                    }
+                }
+                else
+                {
+                    // 投影到前进方向：前进按投影计入，后退（倒车/被击退）按投影绝对值扣减里程；
+                    // 方向只在前进时平滑跟随，后退时保持原前进方向
+                    float proj = dx * t.DirX + dy * t.DirY;
+                    t.TotalDist += proj;
+                    if (t.TotalDist < 0f)
+                    {
+                        t.TotalDist = 0f; // 防止倒退倒扣出负数
+                    }
+                    if (proj > 0f)
+                    {
+                        // 平滑更新前进方向（当前位移与旧方向各半归一），跟随赛道转弯
+                        float mixX = t.DirX + dx / dist;
+                        float mixY = t.DirY + dy / dist;
+                        float ml = (float)Math.Sqrt(mixX * mixX + mixY * mixY);
+                        if (ml > 0.001f)
+                        {
+                            t.DirX = mixX / ml;
+                            t.DirY = mixY / ml;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 圈数：离开起点区后再次进入起点区 = 过线，圈数 +1
+        if (t.HasPrev && !t.InStartZone && inStart)
+        {
+            t.Lap++;
+            if (t.DistAtLap > 0)
+            {
+                float lapLen = t.TotalDist - t.DistAtLap;
+                if (lapLen > 200f) // 过滤异常短圈（误检）
+                {
+                    t.LapLength = lapLen; // 记录最近一圈长度，用于距离分档归一化
+                }
+            }
+            t.DistAtLap = t.TotalDist;
+        }
+
+        t.HasPrev = true;
+        t.InStartZone = inStart;
+        t.X = x;
+        t.Y = y;
+        t.Ts = ts1;
+    }
+
     // 结束时深拷贝快照，防止结算期间玩家断线
     public RoomMember[] SnapshotMembers { get; set; }
 
@@ -476,6 +567,23 @@ public class Close : RoomMember
 {
     public int ID { get; set; }
     public int PlayerType { get; set; }
+}
+
+// 玩家实时赛道跟踪数据：坐标、圈数、累计里程
+public class TrackPos
+{
+    public float X { get; set; }          // 最近一次主向坐标 f1
+    public float Y { get; set; }          // 最近一次横向坐标 f2
+    public uint Ts { get; set; }          // 最近一次时间戳 ts1
+    public bool HasPrev { get; set; }     // 是否有上一采样点
+    public bool InStartZone { get; set; } // 上一采样是否在起点区
+    public int Lap { get; set; }          // 已完成的圈数
+    public float TotalDist { get; set; }  // 累计路径距离（里程）
+    public float DistAtLap { get; set; }  // 过线时的累计距离（用于估算单圈长度）
+    public float LapLength { get; set; }  // 最近一圈长度
+    public bool HasDir { get; set; }      // 是否已建立前进方向参考
+    public float DirX { get; set; }       // 前进方向单位向量 X
+    public float DirY { get; set; }       // 前进方向单位向量 Y
 }
 
 public enum SlotStatus

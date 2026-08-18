@@ -205,6 +205,7 @@ public static class MultyPlayer
         room.Ranking = new Dictionary<int, int>();
         room.EndTicks = 0;
         room.Ready = new Dictionary<string, bool>();
+        room.Tracks = new Dictionary<int, TrackPos>(); // 新一局重置位置跟踪（坐标/圈数/里程）
         Console.WriteLine("StartTicks = {0}", room.StartTicks);
     }
 

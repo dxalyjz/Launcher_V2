@@ -73,31 +73,44 @@ public class SlotData
 
         if (id == player.ID)
         {
-            if (type <= 2)
+            if (type <= 2) // 道具获取
             {
-                byte[] data1 = iPacket.ReadBytes(25);
+                byte[] segment = iPacket.ReadBytes(5);
+                uint ts1 = iPacket.ReadUInt();
+                uint ts2 = iPacket.ReadUInt();
+                float x = iPacket.ReadFloat();
+                float y = iPacket.ReadFloat();
+                float z = iPacket.ReadFloat();
                 short playerRank = iPacket.ReadShort();
                 byte unk1 = iPacket.ReadByte();
                 byte[] data2 = iPacket.ReadBytes(4);
                 byte unk2 = iPacket.ReadByte();
                 short skill2 = iPacket.ReadShort();
                 byte[] data3 = iPacket.ReadBytes(21);
-                int id2 = iPacket.ReadInt();
+                uint id2 = iPacket.ReadUInt();
                 uint ticks = iPacket.ReadUInt();
-                short skill = RandomItemSkill(Parent.Client.Nickname, room.GameType, playerRank);
+                // 记录该玩家坐标/圈数/累计里程（每个玩家在自己的连接上报，room.Tracks 聚合全房间）
+                room.UpdateTrack(id, x, y, ts1);
+                // 按包内 playerRank=0 判定第一名，落后程度用里程差半圈分档发道具
+                short skill = RandomItemSkill(Parent.Client.Nickname, room.GameType, GetRankAttrByDist(room, id, playerRank));
                 using (OutPacket oPacket = new OutPacket("GameSlotPacket"))
                 {
                     oPacket.WriteInt(id);
                     oPacket.WriteUInt(item);
                     oPacket.WriteByte(type);
-                    oPacket.WriteBytes(data1);
+                    oPacket.WriteBytes(segment);
+                    oPacket.WriteUInt(ts1);
+                    oPacket.WriteUInt(ts2);
+                    oPacket.WriteFloat(x);
+                    oPacket.WriteFloat(y);
+                    oPacket.WriteFloat(z);
                     oPacket.WriteShort(skill);
                     oPacket.WriteByte(1);
                     oPacket.WriteBytes(data2);
                     oPacket.WriteByte(2);
                     oPacket.WriteShort(skill);
                     oPacket.WriteBytes(data3);
-                    oPacket.WriteInt(id2);
+                    oPacket.WriteUInt(id2);
                     oPacket.WriteUInt(ticks);
                     MultyPlayer.BroadCast(roomId, oPacket);
                 }
@@ -112,7 +125,7 @@ public class SlotData
                 }
                 return;
             }
-            else if (type is 9 or 12)
+            else if (type is 9 or 12) // 9道具获得通知 12道具投掷/命中动画
             {
                 using (OutPacket oPacket = new OutPacket())
                 {
@@ -121,7 +134,7 @@ public class SlotData
                 }
                 return;
             }
-            else if (type == 10)
+            else if (type == 10) // 道具使用
             {
                 byte uni = iPacket.ReadByte();
                 byte success = iPacket.ReadByte();
@@ -180,7 +193,7 @@ public class SlotData
         }
     }
 
-    public static short RandomItemSkill(string Nickname, byte gameType, short playerRank)
+    public static short RandomItemSkill(string Nickname, byte gameType, string rankAttr = null)
     {
         XDocument doc;
         if (gameType == 2)
@@ -209,25 +222,110 @@ public class SlotData
 
         Random random = new Random();
         short skill;
-        // 其他名次（排名不在 1~8 名范围）：全部技能随机
-        if (playerRank < 0 || playerRank > 7)
+        if (rankAttr != null)
         {
-            skill = GetItemIdx(items[random.Next(items.Count)]);
+            // 按实时位置距离分档选取权重列
+            skill = WeightedRandomItem(items, rankAttr, random);
         }
         else
         {
-            // 名次对应权重列：第1名 toprank / 第2~4名 highrank / 第5~7名 midrank / 第8名 lowrank
-            string rankAttr = playerRank switch
-            {
-                0 => "toprank",
-                >= 1 and <= 3 => "highrank",
-                >= 4 and <= 6 => "midrank",
-                _ => "lowrank"
-            };
-            skill = WeightedRandomItem(items, rankAttr, random);
+            // 无分档信息（如开局道具）：全部技能随机
+            skill = GetItemIdx(items[random.Next(items.Count)]);
         }
         skill = GetItemSkill(Nickname, skill);
         return skill;
+    }
+
+    // 与第一名的里程差分档：
+    // 无位置数据按名次分档。
+    public static string GetRankAttrByDist(GameRoom room, int myId, short playerRank)
+    {
+        if (playerRank == 0)
+        {
+            return "toprank"; // 第一名直接用包内 playerRank=0
+        }
+
+        // 位置数据不足（<2 人）无法用里程差归一化：按包内名次直接映射档位
+        if (room.Tracks.Count < 2)
+        {
+            int count = room.GetCount();
+            if (count < 4)
+            {
+                // 人数过少（<4）：随机三档
+                return Random.Shared.Next(3) switch
+                {
+                    0 => "highrank",
+                    1 => "midrank",
+                    _ => "lowrank"
+                };
+            }
+            else if (count < 6)
+            {
+                if (playerRank >= count - 1)
+                {
+                    return "lowrank"; // 最后一位
+                }
+                if (playerRank == 1)
+                {
+                    return "highrank"; // 次名
+                }
+                return "midrank"; // 其余名次全部 midrank
+            }
+            else if (count < 8)
+            {
+                if (playerRank >= count - 2)
+                {
+                    return "lowrank"; // 最后二位
+                }
+                if (playerRank == 1)
+                {
+                    return "highrank"; // 次名
+                }
+                return "midrank"; // 其余名次全部 midrank
+            }
+            else
+            {
+                return playerRank switch
+                {
+                    >= 1 and <= 2 => "highrank",
+                    >= 3 and <= 5 => "midrank",
+                    _ => "lowrank" // 6、7 及其他
+                };
+            }
+        }
+
+        if (!room.Tracks.TryGetValue(myId, out TrackPos my))
+        {
+            return "lowrank"; // 无位置数据：按落后处理
+        }
+
+        float leaderDist = 0f;
+        float lapLen = 0f;
+        foreach (TrackPos t in room.Tracks.Values)
+        {
+            if (t.TotalDist > leaderDist)
+            {
+                leaderDist = t.TotalDist;
+            }
+            if (t.LapLength > lapLen)
+            {
+                lapLen = t.LapLength;
+            }
+        }
+
+        float diff = leaderDist - my.TotalDist;
+        if (diff >= 500f)
+        {
+            return "lowrank";
+        }
+        else if (diff >= 300f)
+        {
+            return "midrank";
+        }
+        else
+        {
+            return "highrank";
+        }
     }
 
     // 按权重列加权随机选取道具，返回技能 id（item 的 idx 属性）
