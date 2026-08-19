@@ -233,6 +233,19 @@ public class MyRoomData
             return;
         }
 
+        // 玩家在 GameRoom 中直接进入 MyRoom 时，先将其移出 GameRoom。
+        // 否则玩家会同时存在于 GameRoom(_playerRoomMap/房间格子) 与 MyRoom 中，
+        // 导致 _playerRoomMap 残留映射，玩家无法正常离开/重新加入房间。
+        int roomId = RoomManager.TryGetRoomId(Nickname);
+        if (roomId != -1)
+        {
+            int slotId = RoomManager.GetPlayerSlotId(roomId, Nickname);
+            if (slotId != -1)
+            {
+                RoomManager.RemovePlayer(roomId, (byte)slotId, Nickname);
+            }
+        }
+
         EnsureProfileLoaded(owner);
 
         if (!TryEnterMyRoom(owner, Nickname))

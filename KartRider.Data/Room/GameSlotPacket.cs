@@ -167,7 +167,7 @@ public class SlotData
                 }
                 return;
             }
-            else if(type == 11)
+            else if (type == 11) // 被道具攻击
             {
                 var uni = iPacket.ReadByte();
                 var skill = iPacket.ReadShort();
@@ -471,5 +471,92 @@ public class SlotData
             oPacket.WriteUInt(ticks == 0 ? MultyPlayer.ConvertTick() : ticks);
             MultyPlayer.BroadCast(roomId, oPacket, Nickname);
         }
+    }
+
+    /// <param name="roomId">房间 id</param>
+    /// <param name="victimId">被攻击玩家 id（客户端会话 id，同 AddItemSkill 的 id 参数；动画起点坐标来源）</param>
+    /// <param name="attackerId">攻击者 ObID（Player.ID，8~15；仅用于定位攻击者昵称）</param>
+    /// <param name="itemId">攻击道具 id（导弹 7、水炸弹 9、水苍蝇 4 等）</param>
+    public static void SimulateAttack(int roomId, int victimId, int attackerId, short itemId)
+    {
+        var room = RoomManager.GetRoom(roomId);
+        if (room == null)
+        {
+            Console.WriteLine("[SimulateAttack] 房间 {0} 不存在，模拟攻击失败", roomId);
+            return;
+        }
+
+        // 攻击者在房间内时，按其技能配置转换道具（能力卡可能改变道具效果）
+        string attackerName = null;
+        foreach (RoomMember member in room.ObIDs)
+        {
+            if (member is Player p && p.ID == attackerId)
+            {
+                attackerName = p.Nickname;
+                break;
+            }
+        }
+        if (attackerName != null)
+        {
+            itemId = GetItemSkill(attackerName, itemId);
+        }
+
+        // 动画位置：优先取受害者的最后已知坐标（无跟踪数据时用赛道起点附近默认值）
+        float ax = 450f, ay = 600f, az = 120f;
+        if (room.Tracks.TryGetValue(victimId, out TrackPos vt))
+        {
+            ax = vt.X;
+            ay = vt.Y;
+        }
+
+        uint tick = MultyPlayer.ConvertTick();
+
+        // ===== 第一个包：投掷动画（攻击前提醒）=====
+        // 结构对照日志 L11（payload=102，lenfield=0x52=off20 之后字节数）：
+        //   id=0 | item=0 | type=0C | uni=00 | 00 00 | 00 00 00 00 | 0x52 |
+        //   固定标识(8) | 事件序号(4) | 01 | 00 00 00 | skill(2) | 时间戳(4) | 帧号(4)=05 |
+        //   位置xyz(12) | 3x3旋转矩阵(36) | 00×8
+        using (OutPacket oPacket = new OutPacket("GameSlotPacket"))
+        {
+            oPacket.WriteInt(victimId);                         // id = 0
+            oPacket.WriteUInt(0);                               // item = 0
+            oPacket.WriteByte(12);                              // type = 12 道具动画
+            oPacket.WriteByte(0);                               // uni = 0（投掷）
+            oPacket.WriteShort(0);                              // 00 00
+            oPacket.WriteInt(0);                                // 00 00 00 00
+            oPacket.WriteInt(0x52);                             // 长度字段 = 82
+            oPacket.WriteHexString("8E 03 29 11 AD 04 4C 1D");  // 固定标识（真实包全部一致）
+            oPacket.WriteHexString("51 00 00 10");              // 事件序号（真实包按事件递增）
+            oPacket.WriteByte(1);                               // 01 = 投掷动画
+            oPacket.WriteBytes(new byte[3]);                    // 00 00 00
+            oPacket.WriteShort(itemId);                         // 攻击道具 skill（如 7=导弹）
+            oPacket.WriteUInt(tick);                            // 时间戳
+            oPacket.WriteInt(attackerId);                       // 攻击者ID
+            oPacket.WriteFloat(ax);                             // 位置 x
+            oPacket.WriteFloat(ay);                             // 位置 y
+            oPacket.WriteFloat(az);                             // 位置 z
+            // 3x3 单位旋转矩阵（行优先），真实包为道具姿态矩阵
+            oPacket.WriteFloat(1f); oPacket.WriteFloat(0f); oPacket.WriteFloat(0f);
+            oPacket.WriteFloat(0f); oPacket.WriteFloat(1f); oPacket.WriteFloat(0f);
+            oPacket.WriteFloat(0f); oPacket.WriteFloat(0f); oPacket.WriteFloat(1f);
+            oPacket.WriteBytes(new byte[8]);                    // 尾部填充（真实包 8 字节全零）
+            MultyPlayer.BroadCast(roomId, oPacket);             // 广播全房间播放投掷动画（攻击前提醒）
+        }
+
+        // ===== 第二个包：被攻击（type=11，触发被攻击判定）=====
+        // 结构对照日志 L17（payload=23，紧随 type=12 投掷动画之后，才是真正的"被攻击"）：
+        //   id(4)=0 | item(4)=0 | type(1)=0B | uni(1)=00 | skill(2)=攻击道具 | 00×11
+        using (OutPacket oPacket = new OutPacket("GameSlotPacket"))
+        {
+            oPacket.WriteInt(victimId);                         // id = 0
+            oPacket.WriteUInt(0);                               // item = 0
+            oPacket.WriteByte(11);                              // type = 11 被攻击
+            oPacket.WriteByte(0);                               // uni = 0
+            oPacket.WriteShort(itemId);                         // 攻击道具 skill（如 7=导弹）
+            oPacket.WriteBytes(new byte[11]);                   // 00×11（真实包全零）
+            MultyPlayer.BroadCast(roomId, oPacket);             // 广播被攻击包，客户端触发被攻击
+        }
+        Console.WriteLine("[SimulateAttack] 房间 {0}: 玩家 {1} 投掷道具 {2}（type=12 提醒 + type=11 被攻击双包，位置 ({3:0.0}, {4:0.0}, {5:0.0})）",
+            roomId, attackerName ?? attackerId.ToString(), itemId, ax, ay, az);
     }
 }
