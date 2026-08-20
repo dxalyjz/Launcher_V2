@@ -2326,7 +2326,7 @@ namespace KartRider
                     {
                         using (OutPacket outPacket = new OutPacket("PrRequestPeriodExchangeInitPacket"))
                         {
-                            outPacket.WriteBytes(new byte[22]);
+                            outPacket.WriteHexString("01 01 00 00 00 F4 01 00 00 03 00 00 00 06 00 00 00 09 00 00 00 01");
                             this.Parent.Client.Send(outPacket);
                         }
                         return;
