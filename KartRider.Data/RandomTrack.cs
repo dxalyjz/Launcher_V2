@@ -200,7 +200,7 @@ namespace KartRider
                 RandomTrackSetRandomTrack = "Unknown";
             }
 
-            if (RandomTrackSetRandomTrack == "all" || RandomTrackSetRandomTrack == "speedAll")
+            if (RandomTrackSetRandomTrack == "all")
             {
                 Random random = new Random();
                 List<uint> availableTracks = new List<uint>();
@@ -217,8 +217,9 @@ namespace KartRider
 
                 if (availableTracks == null || availableTracks.Count == 0)
                 {
+                    // RandomTrackGameType == "speed"：取出 speed + item 的赛道；== "item"：只取出 item 的赛道
                     var allTracks = TrackList.Values
-                        .Where(t => (RandomTrackSetRandomTrack == "all" && RandomTrackGameType == "speed") || t.gameType == RandomTrackGameType)
+                        .Where(t => t.gameType == RandomTrackGameType || (RandomTrackGameType == "speed" && t.gameType == "item"))
                         .Where(t => !string.IsNullOrEmpty(t.ID) && !string.IsNullOrEmpty(t.Name))
                         .ToList();
 
@@ -234,7 +235,7 @@ namespace KartRider
                     if (allTracks.Count == 0 && ai)
                     {
                         allTracks = TrackList.Values
-                            .Where(t => (RandomTrackSetRandomTrack == "all" && RandomTrackGameType == "speed") || t.gameType == RandomTrackGameType)
+                            .Where(t => t.gameType == RandomTrackGameType || (RandomTrackGameType == "speed" && t.gameType == "item"))
                             .Where(t => !string.IsNullOrEmpty(t.ID) && !string.IsNullOrEmpty(t.Name))
                             .ToList();
                     }
@@ -246,6 +247,65 @@ namespace KartRider
                 if (availableTracks == null || availableTracks.Count == 0)
                 {
                     Console.WriteLine("[RandomTrack] Warning: No available tracks for gameType={0}, ai={1}, returning default track: {2}", RandomTrackGameType, ai, GameTrack);
+                    return Adler32Helper.GenerateAdler32_UNICODE(GameTrack, 0);
+                }
+
+                // 排除已使用的 track
+                var unusedTracks = availableTracks.Where(t => !usedTracks.Contains(t)).ToList();
+
+                // 如果所有 track 都已使用完，重置记录
+                if (unusedTracks.Count == 0)
+                {
+                    usedTracks.Clear();
+                    unusedTracks = availableTracks;
+                }
+
+                if (unusedTracks.Count > 0)
+                {
+                    uint selectedTrack = unusedTracks[random.Next(unusedTracks.Count)];
+                    usedTracks.Add(selectedTrack);
+                    return selectedTrack;
+                }
+                else
+                {
+                    Console.WriteLine("[RandomTrack] Warning: No unused tracks available, returning default track: {0}", GameTrack);
+                    return Adler32Helper.GenerateAdler32_UNICODE(GameTrack, 0);
+                }
+            }
+            else if (RandomTrackSetRandomTrack == "speedAll")
+            {
+                // speedAll（竞速随机）单独处理：直接从 TrackList.Values 中筛选 gameType == "speed" 的赛道
+                Random random = new Random();
+                List<uint> availableTracks = new List<uint>();
+
+                var allTracks = TrackList.Values
+                    .Where(t => t.gameType == "speed")
+                    .Where(t => !string.IsNullOrEmpty(t.ID) && !string.IsNullOrEmpty(t.Name))
+                    .ToList();
+
+                // 如果 ai 为 true，筛选出 basicAi == true 的 track
+                if (ai)
+                {
+                    allTracks = allTracks
+                        .Where(t => t.basicAi)
+                        .ToList();
+                }
+
+                // 如果 AI 过滤后没有可用 track，回退到不过滤 AI
+                if (allTracks.Count == 0 && ai)
+                {
+                    allTracks = TrackList.Values
+                        .Where(t => t.gameType == "speed")
+                        .Where(t => !string.IsNullOrEmpty(t.ID) && !string.IsNullOrEmpty(t.Name))
+                        .ToList();
+                }
+
+                availableTracks = allTracks.Select(t => t.hash).ToList();
+
+                // 如果仍然没有可用 track，返回默认
+                if (availableTracks == null || availableTracks.Count == 0)
+                {
+                    Console.WriteLine("[RandomTrack] Warning: No available tracks for speedAll, ai={0}, returning default track: {1}", ai, GameTrack);
                     return Adler32Helper.GenerateAdler32_UNICODE(GameTrack, 0);
                 }
 
@@ -285,37 +345,8 @@ namespace KartRider
             }
             else
             {
-                XDocument doc = randomTrack;
-                var TrackSet = doc.Descendants("RandomTrackSet")
-                    .FirstOrDefault(rts => (string)rts.Attribute("gameType") == RandomTrackGameType && (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack);
-
-                List<string> availableTrackIds = new List<string>();
-
-                if (TrackSet != null)
-                {
-                    availableTrackIds = TrackSet.Descendants("track")
-                        .Select(t => (string)t.Attribute("id"))
-                        .Where(id => !string.IsNullOrEmpty(id))
-                        .ToList();
-                }
-                else
-                {
-                    var TrackList = doc.Descendants("RandomTrackList")
-                        .FirstOrDefault(rts => (string)rts.Attribute("randomType") == RandomTrackSetRandomTrack);
-                    if (TrackList != null)
-                    {
-                        availableTrackIds = TrackList.Descendants("track")
-                            .Select(t => (string)t.Attribute("id"))
-                            .Where(id => !string.IsNullOrEmpty(id))
-                            .ToList();
-                    }
-                }
-
-                // 获取这些 track 对应的 hash
-                var availableHashes = availableTrackIds
-                    .Select(id => Adler32Helper.GenerateAdler32_UNICODE(id, 0))
-                    .Where(hash => hash != 0)
-                    .ToList();
+                // 从 XML 中获取该类型配置的赛道
+                List<uint> availableHashes = GetRandomTracksFromXml(RandomTrackGameType, RandomTrackSetRandomTrack);
 
                 // 如果 XML 中没有配置该类型的 track，返回默认
                 if (availableHashes.Count == 0)
@@ -363,6 +394,44 @@ namespace KartRider
         {
             _usedTracks.Clear();
             _lastTrack.Clear();
+        }
+
+        /// <summary>
+        /// 从 randomTrack XML 中获取指定 gameType / randomType 配置的赛道 hash 列表
+        /// </summary>
+        private static List<uint> GetRandomTracksFromXml(string gameType, string randomType)
+        {
+            XDocument doc = randomTrack;
+            var TrackSet = doc.Descendants("RandomTrackSet")
+                .FirstOrDefault(rts => (string)rts.Attribute("gameType") == gameType && (string)rts.Attribute("randomType") == randomType);
+
+            List<string> availableTrackIds = new List<string>();
+
+            if (TrackSet != null)
+            {
+                availableTrackIds = TrackSet.Descendants("track")
+                    .Select(t => (string)t.Attribute("id"))
+                    .Where(id => !string.IsNullOrEmpty(id))
+                    .ToList();
+            }
+            else
+            {
+                var TrackList = doc.Descendants("RandomTrackList")
+                    .FirstOrDefault(rts => (string)rts.Attribute("randomType") == randomType);
+                if (TrackList != null)
+                {
+                    availableTrackIds = TrackList.Descendants("track")
+                        .Select(t => (string)t.Attribute("id"))
+                        .Where(id => !string.IsNullOrEmpty(id))
+                        .ToList();
+                }
+            }
+
+            // 获取这些 track 对应的 hash
+            return availableTrackIds
+                .Select(id => Adler32Helper.GenerateAdler32_UNICODE(id, 0))
+                .Where(hash => hash != 0)
+                .ToList();
         }
     }
 }
