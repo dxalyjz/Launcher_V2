@@ -131,7 +131,7 @@ namespace Profile
 
         public ushort SlotChanger { get; set; } = (ushort)short.MaxValue;
 
-        public uint pmap { get; set; } = 0; //3130 //2520 //ObMaster:718 //Ob:590 //比赛账号:1798
+        public uint pmap { get; set; } = 0; //3130 //2520 //ObMaster:718 //Ob:590 //比赛账号:1798,2098
 
         public byte IdentificationType { get; set; } = 1;
 
